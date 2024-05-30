@@ -78,6 +78,8 @@ local resty_signal = require "resty.signal"
 local lfs = require "lfs"
 local luassert = require "luassert.assert"
 local uuid = require("kong.tools.uuid").uuid
+local colors = require "ansicolors"
+local find = string.find
 
 ffi.cdef [[
   int setenv(const char *name, const char *value, int overwrite);
@@ -705,13 +707,13 @@ function resty_http_proxy_mt:send(opts, is_reopen)
   content_type = content_type or ""
   local t_body_table = type(opts.body) == "table"
 
-  if string.find(content_type, "application/json") and t_body_table then
+  if find(content_type, "application/json") and t_body_table then
     opts.body = cjson.encode(opts.body)
 
-  elseif string.find(content_type, "www-form-urlencoded", nil, true) and t_body_table then
+  elseif find(content_type, "www-form-urlencoded", nil, true) and t_body_table then
     opts.body = utils.encode_args(opts.body, true, opts.no_array_indexes)
 
-  elseif string.find(content_type, "multipart/form-data", nil, true) and t_body_table then
+  elseif find(content_type, "multipart/form-data", nil, true) and t_body_table then
     local form = opts.body
     local boundary = "8fd84e9444e3946c"
     local body = ""
@@ -1886,7 +1888,7 @@ local function wait_timer(timer_name_pattern, plain,
     local is_matched = false
 
     for timer_name, timer in pairs(json.stats.timers) do
-      if string.find(timer_name, timer_name_pattern, 1, plain) then
+      if find(timer_name, timer_name_pattern, 1, plain) then
         is_matched = true
 
         all_finish_each_worker[worker_id] = false
@@ -2473,6 +2475,31 @@ local deep_sort do
 end
 
 
+local function copy_errlog(errlog_path)
+  local file_path = "Unknown path"
+  local line_number = "Unknown line"
+  local errlog_cache_dir = os.getenv("SPEC_ERRLOG_CACHE_DIR") or "/tmp/kong_errlog_cache"
+
+  local ok, err = pl_dir.makepath(errlog_cache_dir)
+  assert(ok, "makepath failed: " .. tostring(err))
+
+  local info = debug.getinfo(3, "Sl")
+  if info then
+    file_path = info.short_src
+    line_number = info.currentline
+  end
+
+  if find(file_path, '/', nil, true) then
+    file_path = string.gsub(file_path, '/', '_')
+  end
+  file_path = errlog_cache_dir .. "/" .. file_path .. "." .. line_number .. '.log'
+
+  ok = pl_file.copy(errlog_path, file_path)
+  if not ok then
+    print(colors("%{yellow}Log saved as: " .. file_path .. "%{reset}"))
+  end
+end
+
 --- Assertion to check the status-code of a http response.
 -- @function status
 -- @param expected the expected status code
@@ -2505,6 +2532,8 @@ local function res_status(state, args)
     args.n = 3
 
     if res.status == 500 then
+      copy_errlog(conf.nginx_err_logs)
+
       -- on HTTP 500, we can try to read the server's error logs
       -- for debugging purposes (very useful for travis)
       local str = pl_file.read(conf.nginx_err_logs)
@@ -4019,7 +4048,7 @@ do
 
     -- retry it when data is not available. because sometime,
     -- the error.log has not been flushed yet.
-    while string.find(data, expected) == nil or cur_msg_id == msg_id  do
+    while find(data, expected) == nil or cur_msg_id == msg_id  do
       ngx.sleep(t)
       time_acc = time_acc + t
       if time_acc >= timeout then
