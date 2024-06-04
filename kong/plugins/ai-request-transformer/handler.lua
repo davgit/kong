@@ -4,6 +4,7 @@ local _M = {}
 local kong_meta     = require "kong.meta"
 local fmt           = string.format
 local llm           = require("kong.llm")
+local llm_state     = require("kong.llm.state")
 --
 
 _M.PRIORITY = 777
@@ -31,7 +32,7 @@ local function create_http_opts(conf)
     http_opts.proxy_opts = http_opts.proxy_opts or {}
     http_opts.proxy_opts.https_proxy = fmt("http://%s:%d", conf.https_proxy_host, conf.https_proxy_port)
   end
-  
+
   http_opts.http_timeout = conf.http_timeout
   http_opts.https_verify = conf.https_verify
 
@@ -40,14 +41,14 @@ end
 
 function _M:access(conf)
   kong.service.request.enable_buffering()
-  kong.ctx.shared.skip_response_transformer = true
+  llm_state.set_response_transformer_skipped()
 
   -- first find the configured LLM interface and driver
   local http_opts = create_http_opts(conf)
   conf.llm.__plugin_id = conf.__plugin_id
   conf.llm.__key__ = conf.__key__
   local ai_driver, err = llm:new(conf.llm, http_opts)
-  
+
   if not ai_driver then
     return internal_server_error(err)
   end
