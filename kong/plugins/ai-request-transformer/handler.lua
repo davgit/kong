@@ -41,7 +41,7 @@ end
 
 function _M:access(conf)
   kong.service.request.enable_buffering()
-  llm_state.set_response_transformer_skipped()
+  llm_state.should_disable_ai_proxy_response_transform()
 
   -- first find the configured LLM interface and driver
   local http_opts = create_http_opts(conf)
@@ -65,7 +65,7 @@ function _M:access(conf)
   if err then
     return bad_request(err)
   end
-  
+
   -- set the body for later plugins
   kong.service.request.set_raw_body(new_request_body)
 
